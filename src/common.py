@@ -533,16 +533,18 @@ class ConfigReader(metaclass=SingletonMeta):
         'AKTIN.DWH_VERSION',
         'AKTIN.I2B2_VERSION'
     }
+    __optional_keys = {'REQUESTS_CA_BUNDLE'}
 
     def load_config_as_env_vars(self, path: str):
         properties = self.__load_config_file(path)
         flattened_props = self.__flatten_config(properties)
         self.__validate_config(flattened_props)
-        for key in self.__required_keys:
-            if key == 'SMTP.STATIC_RECIPIENTS':
-                os.environ[key] = ','.join(flattened_props.get(key))
-            else:
-                os.environ[key] = flattened_props.get(key)
+        for key in self.__required_keys | self.__optional_keys:
+            if key in flattened_props:
+                if key == 'SMTP.STATIC_RECIPIENTS':
+                    os.environ[key] = ','.join(flattened_props.get(key))
+                else:
+                    os.environ[key] = flattened_props.get(key)
 
     @staticmethod
     def __load_config_file(path: str) -> dict:
@@ -564,8 +566,8 @@ class ConfigReader(metaclass=SingletonMeta):
 
     def __validate_config(self, config: dict):
         loaded_keys = set(config.keys())
-        if not self.__required_keys.issubset(loaded_keys):
-            missing_keys = self.__required_keys - loaded_keys
+        missing_keys = self.__required_keys - loaded_keys
+        if missing_keys:
             raise SystemExit(f'following keys are missing in config file: {missing_keys}')
 
 
