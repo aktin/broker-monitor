@@ -2,14 +2,15 @@
 @AUTHOR=William Hoy (whoy@ukaachen.de)
 """
 
+import os.path
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import atlassian.errors
 import pandas as pd
 import matplotlib.colors as mc
 import matplotlib.pyplot as plt
 import numpy as np
-from django.utils.datetime_safe import datetime
-from pandas.errors import EmptyDataError
-
 from src.common import ConfluenceNodeMapper
 
 
@@ -32,7 +33,7 @@ class HeatMapFactory:
         low_err = 1
         high_err = 5
         extr_err = 10
-        bounds = np.array([no_imp, zero, low_err, high_err, extr_err, extr_err*2])-0.00001
+        bounds = [no_imp, zero, low_err, high_err, extr_err, extr_err*2]
 
         # Create the heatmap with its configurations
         cmap = mc.ListedColormap(colors)
@@ -80,34 +81,17 @@ class ChartManager:
         """
         hm = HeatMapFactory()
         data = {}
-        dates = []
 
         def process_path(path):
             try:
-                _dates, error_rates = self.__read_error_rates(path)
+                dates, error_rates = self.__read_error_rates(path)
                 error_rates = error_rates[-self.max_days:]
-                _dates = _dates[-self.max_days:]
+                dates = dates[-self.max_days:]
 
                 clinic_id = self.__get_clinic_num(path)
                 clinic_name = self.mapper.get_node_value_from_mapping_dict(clinic_id, "COMMON_NAME")
-
-                #use data from last year or generate empty cells to keep diagram structure
-                if len(error_rates) < self.max_days:
-                    try:
-                        last_year_path = path.replace(str(datetime.today().year), str(datetime.today().year-1))
-                        _dates_ly, error_rates_ly = self.__read_error_rates(last_year_path)
-                        remaining_days = self.max_days-len(error_rates)
-                        error_rates_ly = error_rates_ly[-remaining_days:]
-                        _dates_ly = _dates_ly[-remaining_days:]
-                        error_rates = np.append(error_rates_ly, error_rates)
-                        _dates = np.append(_dates_ly, _dates)
-                    except Exception as e:
-                        remaining_days = self.max_days - len(error_rates)
-                        error_rates = np.append(np.array([[-1] * remaining_days]), error_rates)
-                        _dates = np.append(np.array([["-"] * remaining_days]), np.array(_dates))
-
                 data[clinic_name] = error_rates
-                return _dates
+                return data, dates
             except Exception as e:
                 print(f"Error processing {path}: {e}")
                 return None
@@ -116,13 +100,11 @@ class ChartManager:
             futures = {executor.submit(process_path, path): path for path in self.csv_paths}
             for future in as_completed(futures):
                 result = future.result()
-                if len(result)==self.max_days:
+                if result:
                     # data is a dictionary containing clinic names as keys and their error rates in an array as the
                     # value. Dates is an array containing the correspondant dates, the error rates refer to, and will be
-                    # displayed on the x-axis of the diagram
-                    dates = result
-        if len(dates) == 0:
-            raise EmptyDataError('dates could not be extracted from stats file')
+                    # displayed on the x axis of the diagram
+                    data, dates = result
         hm.plot(data, dates)
         plt.savefig(self.save_path)
 
