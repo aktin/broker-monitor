@@ -13,7 +13,6 @@ A monitoring system for the [AKTIN Broker](https://github.com/aktin/broker) that
     - Processes collected node data into readable formats
     - Generates individual node status pages in Confluence
     - Creates summary dashboards with overall network health
-    - Produces visualizations like error rate heatmaps
     - Updates pages incrementally to maintain history
 
 
