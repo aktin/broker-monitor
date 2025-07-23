@@ -1,6 +1,5 @@
 """
 @AUTHOR=William Hoy (whoy@ukaachen.de)
-@VERSION=1.33
 """
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
