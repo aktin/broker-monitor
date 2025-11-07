@@ -252,11 +252,19 @@ class ConfluenceClinicContactGrabber(TemplatePageContentWriter):
     Searches another Confluence page for correspondents of a broker node ID.
     Correspondents are written as a table into the template.
     """
-    __confluence_email_list: str = 'E-Mail-Verteiler'
+    __confluence_email_list: str = 'E-Mail-Verteiler 2.0'
 
     def __init__(self):
         super().__init__()
-        self.__email_df = self.__grab_email_contacts_dataframe()
+        self.__email_df = self.__grab_email_contacts_dataframe2()
+
+    def __grab_email_contacts_dataframe2(self) -> pd.DataFrame:
+        confluence = ConfluenceConnection()
+        df = confluence.get_attached_excel_as_df(self.__confluence_email_list, "E-Mail-Verteiler.xlsx")
+        df['Node ID'] = (df['Node ID'].astype(str).str.replace(r'\D', '', regex=True))
+        df['Node ID'] = pd.to_numeric(df['Node ID'])
+        df = df.fillna('')
+        return df
 
     def __grab_email_contacts_dataframe(self) -> pd.DataFrame:
         confluence = ConfluenceConnection()
@@ -762,6 +770,7 @@ class SummaryTableCreator:
         return summary_table
 
     def __create_summary_table_header(self) -> Tag:
+        index = self.__creator.create_th_html_element('Index')
         node = self.__creator.create_th_html_element('Node')
         interface = self.__creator.create_th_html_element('Interface')
         status = self.__creator.create_th_html_element('Status')
@@ -771,11 +780,12 @@ class SummaryTableCreator:
         todays_imports = self.__creator.create_th_html_element('Imports heute')
         todays_errors = self.__creator.create_th_html_element('Fehler heute')
         header = self.__creator.create_html_element('tr')
-        header.extend([node, interface, last_check, status, todays_imports, todays_errors, todays_error_rate, last_weeks_error_rate])
+        header.extend([index, node, interface, last_check, status, todays_imports, todays_errors, todays_error_rate, last_weeks_error_rate])
         return header
 
-    def create_summary_table_row_from_confluence_page(self, commonname: str, confluence_page: str) -> Tag:
+    def create_summary_table_row_from_confluence_page(self, commonname: str, confluence_page: str, index_number: int) -> Tag:
         template = self.__creator.convert_element_to_soup(confluence_page)
+        index = self.__creator.create_td_html_element(str(index_number), centered=True)
         node_link = self.__creator.create_ac_link_element(commonname)
         node = self.__creator.create_html_element('td', {'style': 'text-align: left;'})
         node.append(node_link)
@@ -788,7 +798,7 @@ class SummaryTableCreator:
         todays_imports = self.__get_sum_of_two_table_data_elements(template, 'daily_imported', 'daily_updated')
         todays_errors = self.__get_sum_of_two_table_data_elements(template, 'daily_invalid', 'daily_failed')
         row = self.__creator.create_html_element('tr')
-        row.extend([node, interface, last_check, status, todays_imports, todays_errors, todays_error_rate, last_weeks_error_rate])
+        row.extend([index, node, interface, last_check, status, todays_imports, todays_errors, todays_error_rate, last_weeks_error_rate])
         return row
 
     def __create_table_data_from_page_template_key(self, template_page: bs4.BeautifulSoup, key: str) -> Tag:
@@ -840,12 +850,14 @@ class ConfluencePageHandlerManager(ConfluenceHandler):
     def upload_summary_for_confluence_pages(self):
         node_ids = self._mapper.get_all_keys()
         tbody = self.__summary.create_empty_summary_table()
+        index_counter = 1
         for node_id in node_ids:
             common_name = self._mapper.get_node_value_from_mapping_dict(node_id, 'COMMON_NAME')
             if self._confluence.does_page_exists(common_name):
                 page = self._confluence.get_page_content(common_name)
-                row = self.__summary.create_summary_table_row_from_confluence_page(common_name, page)
+                row = self.__summary.create_summary_table_row_from_confluence_page(common_name, page, index_counter)
                 tbody.find('tbody').append(row)
+                index_counter += 1
         table = self.__summary.create_summary_table_frame()
         table.append(tbody)
         self._confluence.update_confluence_page(self._confluence_parent_page, str(table))
