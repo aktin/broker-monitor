@@ -252,11 +252,19 @@ class ConfluenceClinicContactGrabber(TemplatePageContentWriter):
     Searches another Confluence page for correspondents of a broker node ID.
     Correspondents are written as a table into the template.
     """
-    __confluence_email_list: str = 'E-Mail-Verteiler'
+    __confluence_email_list: str = 'E-Mail-Verteiler 2.0'
 
     def __init__(self):
         super().__init__()
-        self.__email_df = self.__grab_email_contacts_dataframe()
+        self.__email_df = self.__grab_email_contacts_dataframe2()
+
+    def __grab_email_contacts_dataframe2(self) -> pd.DataFrame:
+        confluence = ConfluenceConnection()
+        df = confluence.get_attached_excel_as_df(self.__confluence_email_list, "E-Mail-Verteiler.xlsx")
+        df['Node ID'] = (df['Node ID'].astype(str).str.replace(r'\D', '', regex=True))
+        df['Node ID'] = pd.to_numeric(df['Node ID'])
+        df = df.fillna('')
+        return df
 
     def __grab_email_contacts_dataframe(self) -> pd.DataFrame:
         confluence = ConfluenceConnection()
