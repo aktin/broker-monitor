@@ -27,6 +27,7 @@ import os
 import sys
 
 from abc import ABC, abstractmethod
+from io import StringIO
 
 import bs4
 import pandas as pd
@@ -35,6 +36,7 @@ from packaging import version
 
 from common import Main, CSVHandler, ConfluenceConnection, ConfluenceNodeMapper, ErrorCSVHandler, InfoCSVHandler, \
     ResourceLoader, SingletonABCMeta, SingletonMeta, TimestampHandler
+from src.error_histogram_service import ChartManager
 
 
 class TemplatePageLoader(ResourceLoader):
@@ -269,7 +271,7 @@ class ConfluenceClinicContactGrabber(TemplatePageContentWriter):
     def __grab_email_contacts_dataframe(self) -> pd.DataFrame:
         confluence = ConfluenceConnection()
         confluence_email_page = confluence.get_page_content(self.__confluence_email_list)
-        email_table = pd.read_html(confluence_email_page)
+        email_table = pd.read_html(StringIO(confluence_email_page))
         df = email_table[0]
         df.columns=df.iloc[0]
         df = df.iloc[1:].reset_index(drop=True)
@@ -663,6 +665,20 @@ class TemplatePageMonitoringStartDateWriter(TemplatePageCSVContentWriter):
         self._page_template.find(class_='online_since').replace_with(td)
 
 
+class TemplatePageSummaryTableWriter:
+    """
+    Adds Summary table and heatmap to parent page
+    """
+    def __init__(self):
+        self._creator = TemplatePageElementCreator()
+
+    def add_content_to_template(self, template_page, table, image):
+        page_template = bs4.BeautifulSoup(template_page, self._creator.get_parser())
+        page_template.find(class_='table_summary_body').replace_with(table)
+        page_template.find(class_='heatmap_img').replace_with(image)
+        return str(page_template)
+
+
 class TemplatePageMigrator:
     """
     Migrates information that is only set once in the Confluence page (like monitoring start date)
@@ -798,7 +814,8 @@ class SummaryTableCreator:
         todays_imports = self.__get_sum_of_two_table_data_elements(template, 'daily_imported', 'daily_updated')
         todays_errors = self.__get_sum_of_two_table_data_elements(template, 'daily_invalid', 'daily_failed')
         row = self.__creator.create_html_element('tr')
-        row.extend([index, node, interface, last_check, status, todays_imports, todays_errors, todays_error_rate, last_weeks_error_rate])
+        row.extend([index, node, interface, last_check, status, todays_imports, todays_errors, todays_error_rate,
+                    last_weeks_error_rate])
         return row
 
     def __create_table_data_from_page_template_key(self, template_page: bs4.BeautifulSoup, key: str) -> Tag:
@@ -818,6 +835,28 @@ class SummaryTableCreator:
         td = self.__creator.create_td_html_element(str(sum_values), centered=True)
         return td
 
+
+class SummaryPageHandler(ConfluenceHandler):
+    """
+    Creates a new Confluence page template with stats of all broker nodes. Then updates the original page in Confluence
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.__loader = TemplatePageLoader()
+        self.__migrator = TemplatePageMigrator()
+        self.__content_writer = TemplatePageSummaryTableWriter()
+
+    def upload_summary_as_confluence_page(self, table, image):
+        """
+        ConfluencePageHandlerManager class that uses this class, initialises the parent page on startup. We can
+        therefore assume, that the parent page always exists.
+        """
+        page_template = self.__loader.get_template_summary()
+        page = self.__content_writer.add_content_to_template(page_template, table, image)
+        self._confluence.update_confluence_page(self._confluence_parent_page, page)
+
+
 class ConfluencePageHandlerManager(ConfluenceHandler):
     """
     Manages ConfluencePageHandlers for each broker node and performs various operations.
@@ -832,6 +871,7 @@ class ConfluencePageHandlerManager(ConfluenceHandler):
         self.__summary = SummaryTableCreator()
         self.__csv_handler = InfoCSVHandler()
         self.__creator = TemplatePageElementCreator()
+        self.__summary_creator = SummaryPageHandler()
         self.__init_parent_page()
 
     def __init_parent_page(self):
@@ -849,6 +889,10 @@ class ConfluencePageHandlerManager(ConfluenceHandler):
 
     def upload_summary_for_confluence_pages(self):
         node_ids = self._mapper.get_all_keys()
+        file_path = self._create_error_rate_histogram_image(node_ids)
+        histogram = self.create_histogram_html_element(self._confluence_parent_page, file_path)
+        self.__delete_chart_file(file_path)
+
         tbody = self.__summary.create_empty_summary_table()
         index_counter = 1
         for node_id in node_ids:
@@ -860,7 +904,56 @@ class ConfluencePageHandlerManager(ConfluenceHandler):
                 index_counter += 1
         table = self.__summary.create_summary_table_frame()
         table.append(tbody)
-        self._confluence.update_confluence_page(self._confluence_parent_page, str(table))
+
+        self.__summary_creator.upload_summary_as_confluence_page(table, histogram)
+
+    def __wrap_html_elements(self, *args):
+        """
+        This method receives a list of html elements and wraps them in a div. This is necessary to upload both the
+        heatmap und summary table at once, because if they are uploaded seperately, the previous element will be
+        overwritten
+        """
+        div = self.__creator.create_html_element('div')
+        for arg in args:
+            div.append(arg)
+        return div
+
+    def _create_error_rate_histogram_image(self, node_ids: list):
+        """
+        This method collects statistical data from each node and uses them to generate a histogram
+        """
+        valid_paths = []  # List of paths leading to newest data file of each node
+        for node_id in node_ids:
+            name_csv = self.__csv_handler.generate_node_csv_name(node_id)
+            path_csv = os.path.join(self.__working_dir, node_id, name_csv)
+            if os.path.exists(path_csv):
+                valid_paths.append(path_csv)
+
+        save_path = os.path.join(self.__resources_dir, 'error_rates_hist.png')
+        cman = ChartManager(csv_paths=valid_paths, save_path=save_path, mapper=self._mapper)
+        cman.heat_map()
+        return save_path
+
+    def create_histogram_html_element(self, page_name: str, file_path: str) -> Tag:
+        """
+        Uploads a image file to attachements of the confluence page. Then creates a new table row containing the image.
+        """
+        confluence = ConfluenceConnection()
+        page_id = confluence.upload_file_as_attachement_to_page(page_name, file_path, 'image/png')
+        image_container = self.__creator.create_html_element('img', {
+            'class': 'heatmap_img',
+            'src': os.path.join(os.getenv('CONFLUENCE.URL'), 'download','attachments',str(page_id),str(os.path.basename(file_path))),
+            'width': '80%',
+            'height': '80%'
+        })
+
+        return image_container
+
+    def __delete_chart_file(self, dir: str):
+        if os.path.exists(dir) and os.path.isfile(dir):
+            os.remove(dir)
+        else:
+            print("Directory does not exist")
 
 
 if __name__ == '__main__':
