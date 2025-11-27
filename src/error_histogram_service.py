@@ -1,24 +1,36 @@
 """
-@AUTHOR=William Hoy (whoy@ukaachen.de)
+@AUTHOR=Wiliam Hoy (whoy@ukaachen.de)
 @VERSION=1.33
 """
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import matplotlib.colors as mc
 import matplotlib.pyplot as plt
 import numpy as np
-from django.utils.datetime_safe import datetime
-from pandas.errors import EmptyDataError
 
 from src.common import ConfluenceNodeMapper
 
 
 class HeatMapFactory:
-    def plot(self, data: dict, dates: list):
-        sorted_data = self._order_dict(data)
-        clinics = list(sorted_data.keys())
-        data_matrix = np.array(list(sorted_data.values()))
+    def plot(self, df: pd.DataFrame, timeframe=30):
+        heat_dates = pd.date_range(start=min(df['date']), end=max(df['date']), freq='d').date
+        clinics = df.clinic_name.unique()
+
+        # fill missing dates with nan
+        heat = pd.DataFrame()
+        heat['clinic_name'] = clinics
+        for date in heat_dates:
+            heat[str(date)] = np.repeat(np.nan, len(clinics))
+
+        for i in df.index:
+            row = df.loc[i]
+            date = row.date
+            err_rate = float(-1 if row.daily_error_rate=='-' else row.daily_error_rate)
+
+            heat.loc[(heat.clinic_name==row.clinic_name), str(date)] = err_rate
+
+        heat_dates = heat.columns[-timeframe:-1]
+        heat = heat[heat.columns[0:1].tolist()+heat_dates.tolist()]
 
         # Define the colors and thresholds (absolute values)
         colors = [
@@ -38,22 +50,23 @@ class HeatMapFactory:
         # Create the heatmap with its configurations
         cmap = mc.ListedColormap(colors)
         norm = mc.BoundaryNorm(bounds, cmap.N)
-        plt.figure(figsize=(data_matrix.shape[1] / 3, data_matrix.shape[0] / 4))
-        extent = (0, data_matrix.shape[1], 0, data_matrix.shape[0])
-        plt.imshow(data_matrix, cmap=cmap, norm=norm, aspect="auto", extent=extent)
+        plt.figure(figsize=(heat.shape[1] / 3, heat.shape[0] / 4))
+        extent = (0, heat.shape[1], 0, heat.shape[0])
+
+        plt.imshow(heat.drop(columns=['clinic_name']).astype(float).to_numpy().tolist(), cmap=cmap, norm=norm, aspect="auto", extent=extent)
         cbar = plt.colorbar(label="Error Rate in %")
         cbar.set_ticklabels(ticklabels=["No Imports", f'{zero}, Online', f'{low_err}, Low error rate', f'{high_err}, High error rate', f'{extr_err}, Extreme error rate', ''])
         plt.subplots_adjust(left=0.2)
 
         # Create horizontal lines and clinic labels for y axis
-        ticks = np.arange(len(data_matrix))
-        plt.hlines(ticks, xmin=0, xmax=data_matrix.shape[1], color='grey', linewidth=0.5)
-        label_ticks = ticks + 0.5
-        plt.yticks(ticks=label_ticks, labels=clinics[::-1], fontsize=10)
-        plt.xticks(ticks=np.arange(len(dates)), labels=dates, rotation=90, ha="left", fontsize=8)
+        yticks = np.arange(len(heat))
+        plt.hlines(yticks, xmin=0, xmax=len(heat_dates), color='grey', linewidth=0.5)
+        label_ticks = yticks + 0.5
+        plt.yticks(ticks=label_ticks, labels=clinics, fontsize=10)
+        plt.xticks(ticks=np.arange(len(heat_dates)), labels=heat_dates, rotation=90, ha="left", fontsize=8)
         plt.savefig('heatmap.png')
 
-    def _order_dict(self, data: dict):
+    def _order(self, data: pd.DataFrame):
         last_week_modifier = 6  # Factor by which the values from last week are multiplied by
         sorted_data = dict(
             sorted(
@@ -80,51 +93,24 @@ class ChartManager:
         This method manages the collection of needed error rate data and initializes the Heatmap generation factory.
         """
         hm = HeatMapFactory()
-        data = {}
-        dates = []
+        data = pd.DataFrame()
 
-        def process_path(path):
-            try:
-                _dates, error_rates = self.__read_error_rates(path)
-                error_rates = error_rates[-self.max_days:]
-                _dates = _dates[-self.max_days:]
+        # collect all clinics
+        for path in self.csv_paths:
+            df = pd.read_csv(path, sep=";")
+            df = df.convert_dtypes()
 
-                clinic_id = self.__get_clinic_num(path)
-                clinic_name = self.mapper.get_node_value_from_mapping_dict(clinic_id, "COMMON_NAME")
+            clinic_id = self.__get_clinic_num(path)
+            clinic_name = self.mapper.get_node_value_from_mapping_dict(clinic_id, "COMMON_NAME")
+            df['clinic_id'] = np.repeat(clinic_id, df.shape[0])
+            df['clinic_name'] = np.repeat(clinic_name, df.shape[0])
 
-                #use data from last year or generate empty cells to keep diagram structure
-                if len(error_rates) < self.max_days:
-                    try:
-                        last_year_path = path.replace(str(datetime.today().year), str(datetime.today().year-1))
-                        _dates_ly, error_rates_ly = self.__read_error_rates(last_year_path)
-                        remaining_days = self.max_days-len(error_rates)
-                        error_rates_ly = error_rates_ly[-remaining_days:]
-                        _dates_ly = _dates_ly[-remaining_days:]
-                        error_rates = np.append(error_rates_ly, error_rates)
-                        _dates = np.append(_dates_ly, _dates)
-                    except Exception as e:
-                        remaining_days = self.max_days - len(error_rates)
-                        error_rates = np.append(np.array([[-1] * remaining_days]), error_rates)
-                        _dates = np.append(np.array([["-"] * remaining_days]), np.array(_dates))
+            data = pd.concat([data, df], ignore_index=True)
 
-                data[clinic_name] = error_rates
-                return _dates
-            except Exception as e:
-                print(f"Error processing {path}: {e}")
-                return None
+        # format dates
+        data['date'] = pd.to_datetime(data['date'], format='%Y-%m-%d %H:%M:%S.%f%z').dt.date
 
-        with ThreadPoolExecutor() as executor:
-            futures = {executor.submit(process_path, path): path for path in self.csv_paths}
-            for future in as_completed(futures):
-                result = future.result()
-                if len(result)==self.max_days:
-                    # data is a dictionary containing clinic names as keys and their error rates in an array as the
-                    # value. Dates is an array containing the correspondant dates, the error rates refer to, and will be
-                    # displayed on the x-axis of the diagram
-                    dates = result
-        if len(dates) == 0:
-            raise EmptyDataError('dates could not be extracted from stats file')
-        hm.plot(data, dates)
+        hm.plot(data)
         plt.savefig(self.save_path)
 
     def __get_clinic_num(self, path: str):

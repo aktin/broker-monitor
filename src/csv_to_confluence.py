@@ -880,7 +880,7 @@ class ConfluencePageHandlerManager(ConfluenceHandler):
 
     def upload_summary_for_confluence_pages(self):
         node_ids = self._mapper.get_all_keys()
-        file_path = self.__create_error_rate_histogram_image()
+        file_path = self._create_error_rate_histogram_image(node_ids)
         histogram = self.create_histogram_html_element(self._confluence_parent_page, file_path)
         self.__delete_chart_file(file_path)
 
@@ -908,11 +908,10 @@ class ConfluencePageHandlerManager(ConfluenceHandler):
             div.append(arg)
         return div
 
-    def __create_error_rate_histogram_image(self):
+    def _create_error_rate_histogram_image(self, node_ids: list):
         """
         This method collects statistical data from each node and uses them to generate a histogram
         """
-        node_ids = self._mapper.get_all_keys()
         valid_paths = []  # List of paths leading to newest data file of each node
         for node_id in node_ids:
             name_csv = self.__csv_handler.generate_node_csv_name(node_id)
