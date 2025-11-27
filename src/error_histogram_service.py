@@ -16,12 +16,12 @@ class HeatMapFactory:
         heat_dates = pd.date_range(start=min(df['date']), end=max(df['date']), freq='d').date
         clinics = df.clinic_name.unique()
 
-        # fill missing dates with nan
-        heat = pd.DataFrame()
-        heat['clinic_name'] = clinics
-        for date in heat_dates:
-            heat[str(date)] = np.repeat(np.nan, len(clinics))
+        # initialize DataFrame
+        date_cols = [str(d) for d in heat_dates]
+        heat = pd.DataFrame(np.nan, index=range(len(clinics)), columns=date_cols)
+        heat.insert(0, "clinic_name", clinics)
 
+        # insert error rates into DataFrame
         for i in df.index:
             row = df.loc[i]
             date = row.date
@@ -29,10 +29,11 @@ class HeatMapFactory:
 
             heat.loc[(heat.clinic_name==row.clinic_name), str(date)] = err_rate
 
+        # filter only relevant time window
         heat_dates = heat.columns[-timeframe:-1]
         heat = heat[heat.columns[0:1].tolist()+heat_dates.tolist()]
 
-        # Define the colors and thresholds (absolute values)
+        # Define the heat-colors and thresholds (absolute values)
         colors = [
             'black',
             'mediumblue',

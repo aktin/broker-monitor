@@ -36,6 +36,7 @@ from packaging import version
 
 from common import Main, CSVHandler, ConfluenceConnection, ConfluenceNodeMapper, ErrorCSVHandler, InfoCSVHandler, \
     ResourceLoader, SingletonABCMeta, SingletonMeta, TimestampHandler
+from src.error_histogram_service import ChartManager
 
 
 class TemplatePageLoader(ResourceLoader):
@@ -813,7 +814,8 @@ class SummaryTableCreator:
         todays_imports = self.__get_sum_of_two_table_data_elements(template, 'daily_imported', 'daily_updated')
         todays_errors = self.__get_sum_of_two_table_data_elements(template, 'daily_invalid', 'daily_failed')
         row = self.__creator.create_html_element('tr')
-        row.extend([index, node, interface, last_check, status, todays_imports, todays_errors, todays_error_rate, last_weeks_error_rate])
+        row.extend([index, node, interface, last_check, status, todays_imports, todays_errors, todays_error_rate,
+                    last_weeks_error_rate])
         return row
 
     def __create_table_data_from_page_template_key(self, template_page: bs4.BeautifulSoup, key: str) -> Tag:
@@ -940,9 +942,9 @@ class ConfluencePageHandlerManager(ConfluenceHandler):
         page_id = confluence.upload_file_as_attachement_to_page(page_name, file_path, 'image/png')
         image_container = self.__creator.create_html_element('img', {
             'class': 'heatmap_img',
-            'src': f"{os.getenv('CONFLUENCE.URL')}/download/attachments/{page_id}/{os.path.basename(file_path)}",
-            'width': '100%',
-            'height': '100%'
+            'src': os.path.join(os.getenv('CONFLUENCE.URL'), 'download','attachments',str(page_id),str(os.path.basename(file_path))),
+            'width': '80%',
+            'height': '80%'
         })
 
         return image_container
