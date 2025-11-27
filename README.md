@@ -1,4 +1,4 @@
-## broker-monitor ![Python 3.10.6](https://img.shields.io/badge/python-3.10.6-blue)
+## broker-monitor 
 
 A monitoring system for the [AKTIN Broker](https://github.com/aktin/broker) that tracks node activity, generates reports, and sends automated alerts. The system consists of several specialized scripts that work together to provide comprehensive monitoring. All reusable components are stored in `common.py`:
 

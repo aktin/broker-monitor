@@ -25,8 +25,10 @@ Created on 22.03.2022
 import json
 import logging
 import os
+import sys
 
 from abc import ABC, abstractmethod
+from io import StringIO
 
 import bs4
 import pandas as pd
@@ -263,7 +265,7 @@ class ConfluenceClinicContactGrabber(TemplatePageContentWriter):
     def __grab_email_contacts_dataframe(self) -> pd.DataFrame:
         confluence = ConfluenceConnection()
         confluence_email_page = confluence.get_page_content(self.__confluence_email_list)
-        email_table = pd.read_html(confluence_email_page)
+        email_table = pd.read_html(StringIO(confluence_email_page))
         df = email_table[0]
         df.columns=df.iloc[0]
         df = df.iloc[1:].reset_index(drop=True)
