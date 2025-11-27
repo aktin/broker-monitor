@@ -435,6 +435,18 @@ class ConfluenceConnection(metaclass=SingletonMeta):
         page_id = self.__confluence.get_page_id(self.__space, pagename)
         self.__confluence.update_page(page_id, pagename, content)
 
+    def list_page_attachements(self, pagename: str) -> list:
+        page_id = self.__confluence.get_page_id(self.__space, pagename)
+        return self.__confluence.get_attachments_from_content(page_id)
+
+    def get_attached_excel_as_df(self, page_name: str, file_name: str) -> pd.DataFrame:
+        """Return an attached Excel file as a DataFrame without touching disk."""
+        page_id = self.__confluence.get_page_id(self.__space, page_name)
+        attach = self.__confluence.download_attachments_from_page(page_id, file_name, to_memory=True)
+        buf = attach.get(file_name)
+        if buf is None:
+          raise FileNotFoundError(f"Attachment not found: {file_name}")
+        return pd.read_excel(buf)
 
 class ConfluenceNodeMapper(metaclass=SingletonMeta):
     """

@@ -13,7 +13,6 @@ A monitoring system for the [AKTIN Broker](https://github.com/aktin/broker) that
     - Processes collected node data into readable formats
     - Generates individual node status pages in Confluence
     - Creates summary dashboards with overall network health
-    - Produces visualizations like error rate heatmaps
     - Updates pages incrementally to maintain history
 
 
@@ -29,15 +28,6 @@ A monitoring system for the [AKTIN Broker](https://github.com/aktin/broker) that
     - Preserves CSVs, logs, and configuration data
     - Ensures data availability for auditing and analysis
 
-
-* `error_histogram_service.py` - Visualization component:
-    - Generates heatmaps showing error rates across all nodes
-    - Uses color-coding to indicate severity levels:
-        - Black: No imports
-        - Blue: Online (0% errors)
-        - Yellow: Low-High error rates (1-10%)
-        - Red: Extreme error rates (>10%)
-    - Helps identify patterns and problematic nodes
 
 ### Usage
 
