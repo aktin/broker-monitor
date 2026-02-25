@@ -12,26 +12,18 @@ from src.common import ConfluenceNodeMapper
 
 
 class HeatMapFactory:
-    def plot(self, df: pd.DataFrame, timeframe=30):
-        heat_dates = pd.date_range(start=min(df['date']), end=max(df['date']), freq='d').date
-        clinics = df.clinic_name.unique()
+    def generate_diagram(self, df: pd.DataFrame, save_path: str = None, timeframe=30, row_height=0.4, width=12):
+        pivoted = df[['clinic_name', 'date', 'error_rate']] \
+            .pivot(index='date', columns='clinic_name', values='error_rate').reset_index()
 
-        # initialize DataFrame
-        date_cols = [str(d) for d in heat_dates]
-        heat = pd.DataFrame(np.nan, index=range(len(clinics)), columns=date_cols)
-        heat.insert(0, "clinic_name", clinics)
+        # keep only dates inside time window
+        max_date = pivoted.date.max()
+        cutoff = max_date - pd.Timedelta(days=timeframe)
+        window = pivoted.loc[pivoted.date >= cutoff].sort_values('date', ascending=True)    # filter columns inside time window
+        heat = window.T
+        heat.columns = heat.iloc[0]
+        heat = heat.iloc[1:]
 
-        # insert error rates into DataFrame
-        for i in df.index:
-            row = df.loc[i]
-            date = row.date
-            err_rate = float(-1 if row.daily_error_rate=='-' else row.daily_error_rate)
-
-            heat.loc[(heat.clinic_name==row.clinic_name), str(date)] = err_rate
-
-        # filter only relevant time window
-        heat_dates = heat.columns[-timeframe:-1]
-        heat = heat[heat.columns[0:1].tolist()+heat_dates.tolist()]
 
         # Define the heat-colors and thresholds (absolute values)
         colors = [
@@ -41,31 +33,59 @@ class HeatMapFactory:
             'yellow',
             'red'
         ]
-        no_imp = -10
+        empty = -10
         zero = 0
         low_err = 1
         high_err = 5
         extr_err = 10
-        bounds = np.array([no_imp, zero, low_err, high_err, extr_err, extr_err*2])-0.00001
+        bounds = np.array([empty, zero, low_err, high_err, extr_err, extr_err*2])-0.00001
+
+        # set bounds for diagram containers
+        dia_width = width
+        dia_height = heat.shape[0] * row_height
+        free_width = 4
+        fig_width = dia_width + free_width
+        fig_height = dia_height + row_height
+
+
+        l_margin = (free_width*(2/3))/fig_width
+        r_margin = 1-((free_width*(1/3))/fig_width)
+        b_margin = row_height/fig_height
+
 
         # Create the heatmap with its configurations
         cmap = mc.ListedColormap(colors)
         norm = mc.BoundaryNorm(bounds, cmap.N)
-        plt.figure(figsize=(heat.shape[1] / 3, heat.shape[0] / 4))
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+
+        # plt.figure(figsize=(width, heat.shape[0] * row_height))   # width: 15 inch, height: 0.4 inch/row
         extent = (0, heat.shape[1], 0, heat.shape[0])
 
-        plt.imshow(heat.drop(columns=['clinic_name']).astype(float).to_numpy().tolist(), cmap=cmap, norm=norm, aspect="auto", extent=extent)
-        cbar = plt.colorbar(label="Error Rate in %")
-        cbar.set_ticklabels(ticklabels=["No Imports", f'{zero}, Online', f'{low_err}, Low error rate', f'{high_err}, High error rate', f'{extr_err}, Extreme error rate', ''])
-        plt.subplots_adjust(left=0.2)
+        yticks = np.arange(len(heat.index))
 
-        # Create horizontal lines and clinic labels for y axis
-        yticks = np.arange(len(heat))
-        plt.hlines(yticks, xmin=0, xmax=len(heat_dates), color='grey', linewidth=0.5)
-        label_ticks = yticks + 0.5
-        plt.yticks(ticks=label_ticks, labels=clinics, fontsize=10)
-        plt.xticks(ticks=np.arange(len(heat_dates)), labels=heat_dates, rotation=90, ha="left", fontsize=8)
-        plt.savefig('heatmap.png')
+        ax.set_yticks(ticks=yticks+0.5, labels=heat.index, fontsize=10)    # labels: clinic_names
+
+        mask = heat.columns.day % 5 == 0
+        xticks = np.where(mask)[0]
+        xlabels = heat.columns[mask].strftime("%d %b")
+        ax.set_xticks(ticks=xticks, labels=xlabels, rotation=0, ha="center", fontsize=8)
+
+        ax.hlines(yticks, xmin=0, xmax=heat.shape[1], color='grey', linewidth=0.5)
+
+        im = ax.imshow(heat.to_numpy().tolist(), cmap=cmap, norm=norm, aspect="auto", extent=extent)
+        cbar = fig.colorbar(mappable=im, ax=ax, label="Error Rate in %",)
+        cbar.set_ticklabels(ticklabels=["No Imports", f'{zero}, Online', f'{low_err}, Low error rate', f'{high_err}, High error rate', f'{extr_err}, Extreme error rate', ''])
+        # plt.subplots_adjust(left=0.2)
+        plt.subplots_adjust(
+            top=1,
+            bottom=b_margin,
+            left=l_margin,
+            right=r_margin
+        )
+
+        plt.savefig(save_path)
+        print()
+
 
     def _order(self, data: pd.DataFrame):
         last_week_modifier = 6  # Factor by which the values from last week are multiplied by
@@ -82,14 +102,12 @@ class HeatMapFactory:
 
 
 class ChartManager:
-    def __init__(self, mapper: ConfluenceNodeMapper, csv_paths: list = None,
-                 save_path: str = "error_rates_histogram.png", max_days: int = 42):
+    def __init__(self, mapper: ConfluenceNodeMapper, csv_paths: list = None, max_days: int = 42):
         self.mapper = mapper
         self.csv_paths = csv_paths if csv_paths is not None else []
-        self.save_path = save_path
         self.max_days = max_days
 
-    def heat_map(self):
+    def generate_heat(self, save_path: str):
         """
         This method manages the collection of needed error rate data and initializes the Heatmap generation factory.
         """
@@ -108,11 +126,19 @@ class ChartManager:
 
             data = pd.concat([data, df], ignore_index=True)
 
-        # format dates
-        data['date'] = pd.to_datetime(data['date'], format='%Y-%m-%d %H:%M:%S.%f%z').dt.date
-
-        hm.plot(data)
-        plt.savefig(self.save_path)
+        # format column types
+        for col in data.columns:
+            # Try numeric
+            converted = pd.to_numeric(data[col], errors="coerce")
+            if converted.notna().sum() > 0:
+                data[col] = converted
+                continue
+            # Try datetime64
+            converted = pd.to_datetime(data[col], errors="coerce", utc=True)
+            if converted.notna().sum() > 0:
+                data[col] = converted.dt.normalize()
+                continue
+        hm.generate_diagram(df=data, save_path=save_path)
 
     def __get_clinic_num(self, path: str):
         """

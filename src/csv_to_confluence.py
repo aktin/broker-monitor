@@ -736,7 +736,7 @@ class ConfluencePageHandler(ConfluenceHandler):
         self.__migrator = TemplatePageMigrator()
         self.__content_writers = [
             TemplatePageClinicInfoWriter(),
-            ConfluenceClinicContactGrabber(),
+            # ConfluenceClinicContactGrabber(),
             TemplatePageCSVInfoWriter(),
             TemplatePageCSVErrorWriter(),
             TemplatePageNodeResourceWriter(),
@@ -930,8 +930,8 @@ class ConfluencePageHandlerManager(ConfluenceHandler):
                 valid_paths.append(path_csv)
 
         save_path = os.path.join(self.__resources_dir, 'error_rates_hist.png')
-        cman = ChartManager(csv_paths=valid_paths, save_path=save_path, mapper=self._mapper)
-        cman.heat_map()
+        cman = ChartManager(csv_paths=valid_paths, mapper=self._mapper)
+        cman.generate_heat(save_path)
         return save_path
 
     def create_histogram_html_element(self, page_name: str, file_path: str) -> Tag:
@@ -959,5 +959,5 @@ class ConfluencePageHandlerManager(ConfluenceHandler):
 if __name__ == '__main__':
     if len(sys.argv) == 1:
         raise SystemExit(f'Usage: python {__file__} <path_to_config.toml>')
-    Main.main(sys.argv[1], lambda: ConfluencePageHandlerManager().upload_node_information_as_confluence_pages())
+    # Main.main(sys.argv[1], lambda: ConfluencePageHandlerManager().upload_node_information_as_confluence_pages())
     Main.main(sys.argv[1], lambda: ConfluencePageHandlerManager().upload_summary_for_confluence_pages())
