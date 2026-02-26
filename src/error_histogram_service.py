@@ -10,96 +10,115 @@ import numpy as np
 
 from src.common import ConfluenceNodeMapper
 
+COLORBAR_HEIGHT_INCHES = 0.15
+COLORBAR_GAP_INCHES = 0.8
+FREE_WIDTH = 2
 
 class HeatMapFactory:
-    def generate_diagram(self, df: pd.DataFrame, save_path: str = None, timeframe=30, row_height=0.4, width=12):
-        pivoted = df[['clinic_name', 'date', 'error_rate']] \
-            .pivot(index='date', columns='clinic_name', values='error_rate').reset_index()
+    """Generates a Heatmap using pandas DataFrame data. Prepares data, styling of diagram and saves it. """
 
-        # keep only dates inside time window
+    def generate_diagram(self, df: pd.DataFrame, save_path: str = None, timeframe=30, row_height=0.5, width=10):
+        heat = self._prepare_heatmap_data(df, timeframe)
+        fig, ax = self._configurate_diagram_container(heat, width, row_height)
+        im = self._draw_heatmap(ax, heat, row_height)
+        self._draw_colorbar(fig, im, heat, width, row_height)
+        self._adjust_layout(fig, width, heat, row_height)
+        plt.savefig(save_path)
+
+    def _prepare_heatmap_data(self, df: pd.DataFrame, timeframe: int) -> pd.DataFrame:
+        pivoted = df[['clinic_name', 'date', 'error_rate']].pivot(
+            index='date', columns='clinic_name', values='error_rate'
+        ).reset_index()
+
         max_date = pivoted.date.max()
         cutoff = max_date - pd.Timedelta(days=timeframe)
-        window = pivoted.loc[pivoted.date >= cutoff].sort_values('date', ascending=True)    # filter columns inside time window
-        heat = window.T
-        heat.columns = heat.iloc[0]
-        heat = heat.iloc[1:]
+        windowed = pivoted.loc[pivoted.date >= cutoff].sort_values('date', ascending=True)
 
+        heat = windowed.T
+        heat.columns = heat.iloc[0].infer_objects()
+        return heat.iloc[1:]
 
-        # Define the heat-colors and thresholds (absolute values)
-        colors = [
-            'black',
-            'mediumblue',
-            'yellow',
-            'yellow',
-            'red'
-        ]
-        empty = -10
-        zero = 0
-        low_err = 1
-        high_err = 5
-        extr_err = 10
-        bounds = np.array([empty, zero, low_err, high_err, extr_err, extr_err*2])-0.00001
+    def _configurate_diagram_container(self, heat: pd.DataFrame, width: int, row_height: float):
+        fig_width = width + FREE_WIDTH
+        fig_height = heat.shape[0] * row_height + row_height
+        return plt.subplots(figsize=(fig_width, fig_height))
 
-        # set bounds for diagram containers
-        dia_width = width
-        dia_height = heat.shape[0] * row_height
-        free_width = 4
-        fig_width = dia_width + free_width
-        fig_height = dia_height + row_height
-
-
-        l_margin = (free_width*(2/3))/fig_width
-        r_margin = 1-((free_width*(1/3))/fig_width)
-        b_margin = row_height/fig_height
-
-
-        # Create the heatmap with its configurations
+    def _build_colormap(self):
+        colors = ['black', 'mediumblue', 'yellow', 'yellow', 'red']
+        thresholds = np.array([-10, 0, 1, 5, 10, 20]) - 0.00001
         cmap = mc.ListedColormap(colors)
-        norm = mc.BoundaryNorm(bounds, cmap.N)
-        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+        norm = mc.BoundaryNorm(thresholds, cmap.N)
+        return cmap, norm, thresholds
 
-        # plt.figure(figsize=(width, heat.shape[0] * row_height))   # width: 15 inch, height: 0.4 inch/row
+    def _draw_heatmap(self, ax, heat: pd.DataFrame, row_height):
+        cmap, norm, _ = self._build_colormap()
+
         extent = (0, heat.shape[1], 0, heat.shape[0])
+        im = ax.imshow(heat.to_numpy().tolist(), cmap=cmap, norm=norm, aspect="auto", extent=extent)
 
         yticks = np.arange(len(heat.index))
+        ax.set_yticks(ticks=yticks + 0.5, labels=heat.index, fontsize=20*row_height)
+        ax.hlines(yticks, xmin=0, xmax=heat.shape[1], color='white', linewidth=1)
 
-        ax.set_yticks(ticks=yticks+0.5, labels=heat.index, fontsize=10)    # labels: clinic_names
+        fifth_day_mask = heat.columns.day % 5 == 0
+        ax.set_xticks(
+            ticks=np.where(fifth_day_mask)[0],
+            labels=heat.columns[fifth_day_mask].strftime("%d %b"),
+            rotation=0, ha="center", fontsize=8
+        )
+        return im
 
-        mask = heat.columns.day % 5 == 0
-        xticks = np.where(mask)[0]
-        xlabels = heat.columns[mask].strftime("%d %b")
-        ax.set_xticks(ticks=xticks, labels=xlabels, rotation=0, ha="center", fontsize=8)
+    def _draw_colorbar(self, fig, im, heat: pd.DataFrame, width: int, row_height: float):
+        _, _, thresholds = self._build_colormap()
+        _, zero, low_err, high_err, extr_err, _ = thresholds + 0.00001
 
-        ax.hlines(yticks, xmin=0, xmax=heat.shape[1], color='grey', linewidth=0.5)
+        fig_width = width + FREE_WIDTH
+        fig_height = heat.shape[0] * row_height + row_height
 
-        im = ax.imshow(heat.to_numpy().tolist(), cmap=cmap, norm=norm, aspect="auto", extent=extent)
-        cbar = fig.colorbar(mappable=im, ax=ax, label="Error Rate in %",)
-        cbar.set_ticklabels(ticklabels=["No Imports", f'{zero}, Online', f'{low_err}, Low error rate', f'{high_err}, High error rate', f'{extr_err}, Extreme error rate', ''])
-        # plt.subplots_adjust(left=0.2)
+        left = (FREE_WIDTH * (2 / 3)) / fig_width
+        right = 1 - (FREE_WIDTH * (1 / 3)) / fig_width
+        top = self._calculate_top_margin(fig_height)
+
+        cbar_bottom = top + COLORBAR_GAP_INCHES / fig_height
+        cbar_height = COLORBAR_HEIGHT_INCHES / fig_height
+        cbar_ax = fig.add_axes([left, cbar_bottom, right - left, cbar_height])
+
+        cbar = fig.colorbar(mappable=im, cax=cbar_ax, orientation='horizontal', label="Error Rate in %")
+        cbar.set_ticklabels([
+            "No Imports",
+            f"{int(zero)}, Online",
+            f"{int(low_err)}, Low error rate",
+            f"{int(high_err)}, High error rate",
+            f"{int(extr_err)}, Extreme error rate",
+            ""
+        ])
+
+    def _calculate_top_margin(self, fig_height: float) -> float:
+        colorbar_section = COLORBAR_HEIGHT_INCHES + COLORBAR_GAP_INCHES
+        return 1 - colorbar_section / fig_height
+
+    def _adjust_layout(self, fig, width: int, heat: pd.DataFrame, row_height: float):
+        fig_width = width + FREE_WIDTH
+        fig_height = heat.shape[0] * row_height + row_height
+
         plt.subplots_adjust(
-            top=1,
-            bottom=b_margin,
-            left=l_margin,
-            right=r_margin
+            top=self._calculate_top_margin(fig_height),
+            bottom=row_height / fig_height,
+            left=FREE_WIDTH / fig_width,
+            right=0.95
         )
 
-        plt.savefig(save_path)
-        print()
-
-
     def _order(self, data: pd.DataFrame):
-        last_week_modifier = 6  # Factor by which the values from last week are multiplied by
+        last_week_modifier = 6
         sorted_data = dict(
             sorted(
                 data.items(),
                 key=lambda item: sum(item[1][:-7]) + sum(x * last_week_modifier for x in item[1][-7:]) if len(
-                    item[1]) > 7 else sum(
-                    item[1]),
+                    item[1]) > 7 else sum(item[1]),
                 reverse=True
             )
         )
         return sorted_data
-
 
 class ChartManager:
     def __init__(self, mapper: ConfluenceNodeMapper, csv_paths: list = None, max_days: int = 42):

@@ -889,9 +889,9 @@ class ConfluencePageHandlerManager(ConfluenceHandler):
 
     def upload_summary_for_confluence_pages(self):
         node_ids = self._mapper.get_all_keys()
-        file_path = self._create_error_rate_histogram_image(node_ids)
-        histogram = self.create_histogram_html_element(self._confluence_parent_page, file_path)
-        self.__delete_chart_file(file_path)
+        hist_path = self._create_error_rate_histogram_image(node_ids)
+        histogram = self.export_image_to_confluence(self._confluence_parent_page, hist_path)
+        self.__delete_chart_file(hist_path)
 
         tbody = self.__summary.create_empty_summary_table()
         index_counter = 1
@@ -934,7 +934,7 @@ class ConfluencePageHandlerManager(ConfluenceHandler):
         cman.generate_heat(save_path)
         return save_path
 
-    def create_histogram_html_element(self, page_name: str, file_path: str) -> Tag:
+    def export_image_to_confluence(self, page_name: str, file_path: str) -> Tag:
         """
         Uploads a image file to attachements of the confluence page. Then creates a new table row containing the image.
         """
