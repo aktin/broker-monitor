@@ -943,8 +943,7 @@ class ConfluencePageHandlerManager(ConfluenceHandler):
         image_container = self.__creator.create_html_element('img', {
             'class': 'heatmap_img',
             'src': os.path.join(os.getenv('CONFLUENCE.URL'), 'download','attachments',str(page_id),str(os.path.basename(file_path))),
-            'width': '80%',
-            'height': '80%'
+            'style': "width: 100%; max-width: 1200px; min-width: 800px;",
         })
 
         return image_container
