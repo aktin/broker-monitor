@@ -7,20 +7,20 @@ import pandas as pd
 import matplotlib.colors as mc
 import matplotlib.pyplot as plt
 import numpy as np
-
 from src.common import ConfluenceNodeMapper
 
-COLORBAR_HEIGHT_INCHES = 0.15
-COLORBAR_GAP_INCHES = 0.8
-FREE_WIDTH = 2
 
 class HeatMapFactory:
     """Generates a Heatmap using pandas DataFrame data. Prepares data, styling of diagram and saves it. """
+    def __init__(self, c_bar_height = 0.15, c_bar_gap = 1, free_width = 2):
+        self.c_bar_height = c_bar_height
+        self.c_bar_gap = c_bar_gap
+        self.free_width = free_width
 
     def generate_diagram(self, df: pd.DataFrame, save_path: str = None, timeframe=30, row_height=0.5, width=10):
         heat = self._prepare_heatmap_data(df, timeframe)
         fig, ax = self._configurate_diagram_container(heat, width, row_height)
-        im = self._draw_heatmap(ax, heat, row_height)
+        im = self._draw_heatmap(ax, heat, row_height, timeframe)
         self._draw_colorbar(fig, im, heat, width, row_height)
         self._adjust_layout(fig, width, heat, row_height)
         plt.savefig(save_path)
@@ -39,7 +39,7 @@ class HeatMapFactory:
         return heat.iloc[1:]
 
     def _configurate_diagram_container(self, heat: pd.DataFrame, width: int, row_height: float):
-        fig_width = width + FREE_WIDTH
+        fig_width = width + self.free_width
         fig_height = heat.shape[0] * row_height + row_height
         return plt.subplots(figsize=(fig_width, fig_height))
 
@@ -50,12 +50,13 @@ class HeatMapFactory:
         norm = mc.BoundaryNorm(thresholds, cmap.N)
         return cmap, norm, thresholds
 
-    def _draw_heatmap(self, ax, heat: pd.DataFrame, row_height):
+    def _draw_heatmap(self, ax, heat: pd.DataFrame, row_height, timeframe):
         cmap, norm, _ = self._build_colormap()
 
         extent = (0, heat.shape[1], 0, heat.shape[0])
         im = ax.imshow(heat.to_numpy().tolist(), cmap=cmap, norm=norm, aspect="auto", extent=extent)
 
+        ax.set_title(f"Fehlerraten der letzten {timeframe} Tage")
         yticks = np.arange(len(heat.index))
         ax.set_yticks(ticks=yticks + 0.5, labels=heat.index, fontsize=20*row_height)
         ax.hlines(yticks, xmin=0, xmax=heat.shape[1], color='white', linewidth=1)
@@ -72,18 +73,18 @@ class HeatMapFactory:
         _, _, thresholds = self._build_colormap()
         _, zero, low_err, high_err, extr_err, _ = thresholds + 0.00001
 
-        fig_width = width + FREE_WIDTH
+        fig_width = width + self.free_width
         fig_height = heat.shape[0] * row_height + row_height
 
-        left = (FREE_WIDTH * (2 / 3)) / fig_width
-        right = 1 - (FREE_WIDTH * (1 / 3)) / fig_width
+        left = (self.free_width * (2 / 3)) / fig_width
+        right = 1 - (self.free_width * (1 / 3)) / fig_width
         top = self._calculate_top_margin(fig_height)
 
-        cbar_bottom = top + COLORBAR_GAP_INCHES / fig_height
-        cbar_height = COLORBAR_HEIGHT_INCHES / fig_height
+        cbar_bottom = top + self.c_bar_gap / fig_height
+        cbar_height = self.c_bar_height / fig_height
         cbar_ax = fig.add_axes([left, cbar_bottom, right - left, cbar_height])
 
-        cbar = fig.colorbar(mappable=im, cax=cbar_ax, orientation='horizontal', label="Error Rate in %")
+        cbar = fig.colorbar(mappable=im, cax=cbar_ax, orientation='horizontal', label="Fehlerrate in %")
         cbar.set_ticklabels([
             "No Imports",
             f"{int(zero)}, Online",
@@ -94,17 +95,17 @@ class HeatMapFactory:
         ])
 
     def _calculate_top_margin(self, fig_height: float) -> float:
-        colorbar_section = COLORBAR_HEIGHT_INCHES + COLORBAR_GAP_INCHES
+        colorbar_section = self.c_bar_height + self.c_bar_gap
         return 1 - colorbar_section / fig_height
 
     def _adjust_layout(self, fig, width: int, heat: pd.DataFrame, row_height: float):
-        fig_width = width + FREE_WIDTH
+        fig_width = width + self.free_width
         fig_height = heat.shape[0] * row_height + row_height
 
         plt.subplots_adjust(
             top=self._calculate_top_margin(fig_height),
             bottom=row_height / fig_height,
-            left=FREE_WIDTH / fig_width,
+            left=self.free_width / fig_width,
             right=0.95
         )
 
