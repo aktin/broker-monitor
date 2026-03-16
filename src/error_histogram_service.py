@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.common import ConfluenceNodeMapper
+from common import ConfluenceNodeMapper
 
 
 class HeatMapDiagram:

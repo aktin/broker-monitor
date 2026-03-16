@@ -36,7 +36,7 @@ from packaging import version
 
 from common import Main, CSVHandler, ConfluenceConnection, ConfluenceNodeMapper, ErrorCSVHandler, InfoCSVHandler, \
     ResourceLoader, SingletonABCMeta, SingletonMeta, TimestampHandler
-from src.error_histogram_service import ChartManager
+from error_histogram_service import ChartManager
 
 
 class TemplatePageLoader(ResourceLoader):
