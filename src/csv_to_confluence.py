@@ -736,7 +736,7 @@ class ConfluencePageHandler(ConfluenceHandler):
         self.__migrator = TemplatePageMigrator()
         self.__content_writers = [
             TemplatePageClinicInfoWriter(),
-            # ConfluenceClinicContactGrabber(),
+            ConfluenceClinicContactGrabber(),
             TemplatePageCSVInfoWriter(),
             TemplatePageCSVErrorWriter(),
             TemplatePageNodeResourceWriter(),
@@ -958,5 +958,5 @@ class ConfluencePageHandlerManager(ConfluenceHandler):
 if __name__ == '__main__':
     if len(sys.argv) == 1:
         raise SystemExit(f'Usage: python {__file__} <path_to_config.toml>')
-    # Main.main(sys.argv[1], lambda: ConfluencePageHandlerManager().upload_node_information_as_confluence_pages())
+    Main.main(sys.argv[1], lambda: ConfluencePageHandlerManager().upload_node_information_as_confluence_pages())
     Main.main(sys.argv[1], lambda: ConfluencePageHandlerManager().upload_summary_for_confluence_pages())
