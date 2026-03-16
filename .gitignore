@@ -136,3 +136,4 @@ profiling_stats.txt
 status.xml
 __pycache__
 venv
+*.png
