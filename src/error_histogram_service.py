@@ -381,7 +381,7 @@ class HeatMapFactory:
         df: pd.DataFrame,
         save_path: str | Path | None = None,
         timeframe: int = 30,
-        row_height: float = 0.2,
+        row_height: float = 0.15,
         figure_width: float = 14,
         colorbar_height: float = None,
         show: bool = False,
@@ -457,7 +457,7 @@ class HeatMapFactory:
 
         return heat_sorted
 
-    def _get_clinic_scores(self, df: pd.DataFrame, short_pct: float = 0.2) -> pd.DataFrame:
+    def _error_scores(self, df: pd.DataFrame, short_pct: float = 0.2) -> pd.DataFrame:
         scores = df.groupby("clinic_name")["daily_error_rate"].agg(
             lambda values: self._calc_likelihood_by_errors(values.to_numpy(), short_pct)
         )
