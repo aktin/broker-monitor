@@ -5,12 +5,17 @@ description = "Collection of monitoring scripts to track node activity of the AK
 requires-python = ">=3.12"
 dependencies = [
     "atlassian-python-api>=4.0.4",
+    "fhir>=0.0.4",
+    "fhir.resources",
+    "fhirpy>=2.2.0",
     "lxml>=6.0.2",
     "matplotlib>=3.10.3",
+    "newpy>=1.1.16",
     "openpyxl>=3.1.5",
     "packaging>=25.0",
     "pandas>=2.3.1",
     "pandas-stubs==2.3.0.250703",
+    "pydantic>=2.12.5",
     "requests>=2.32.4",
     "toml>=0.10.2",
 ]
