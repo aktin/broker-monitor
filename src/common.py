@@ -88,7 +88,10 @@ class CSVHandler(DataWriter, ABC):
         self.__timestamp = TimestampHandler()
 
     def write_data_to_file(self, data: pd.DataFrame, filepath: str):
-        data.to_csv(filepath, sep=self._separator, encoding=self._encoding, index=False)
+        """
+        Writes the declared columns only, so foreign columns cannot accumulate in the CSV
+        """
+        data[self.get_csv_columns()].to_csv(filepath, sep=self._separator, encoding=self._encoding, index=False)
 
     def read_csv_as_df(self, csv_path: str) -> pd.DataFrame:
         return pd.read_csv(csv_path, sep=self._separator, encoding=self._encoding, dtype=str)
