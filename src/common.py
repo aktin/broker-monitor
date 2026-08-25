@@ -22,6 +22,7 @@ Created on 15.02.2022
 #
 #
 
+import csv
 import json
 import logging
 import os
@@ -91,7 +92,8 @@ class CSVHandler(DataWriter, ABC):
         """
         Writes the declared columns only, so foreign columns cannot accumulate in the CSV
         """
-        data[self.get_csv_columns()].to_csv(filepath, sep=self._separator, encoding=self._encoding, index=False)
+        data[self.get_csv_columns()].to_csv(filepath, sep=self._separator, encoding=self._encoding,
+                                            index=False, quoting=csv.QUOTE_ALL)
 
     def read_csv_as_df(self, csv_path: str) -> pd.DataFrame:
         return pd.read_csv(csv_path, sep=self._separator, encoding=self._encoding, dtype=str)
