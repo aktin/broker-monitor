@@ -93,6 +93,18 @@ class TestNodeInfoRetriever(unittest.TestCase):
         self.__check_global_import_stats_in_csv_row(df.iloc[1], '2000', '400', '250', '350', '20.00')
         self.__check_daily_import_stats_in_csv_row(df.iloc[1], '2000', '400', '250', '350', '20.00')
 
+    def test_fetch_next_stats_in_csv_next_hour(self):
+        """
+        A new hour appends a new row. Daily stats refer to the last row of the previous day, not to the previous row.
+        """
+        self.__change_date_of_current_csv_to_past_days(1)
+        self.__put_import_stats_on_broker_and_get_fetched_csv_as_df(self.__create_stats2())
+        self.__change_date_of_last_csv_row_by_hours(1)  # forward, so the row can never fall into yesterday
+        df = self.__put_import_stats_on_broker_and_get_fetched_csv_as_df(self.__create_stats3())
+        self.assertEqual(3, df.shape[0])
+        self.__check_global_import_stats_in_csv_row(df.iloc[2], '3000', '600', '300', '400', '16.28')
+        self.__check_daily_import_stats_in_csv_row(df.iloc[2], '3000', '600', '300', '400', '16.28')
+
     def test_fetch_next_stats_in_csv_timegap(self):
         self.__change_date_of_current_csv_to_past_days(5)
         stats2 = self.__create_stats2()
@@ -149,6 +161,15 @@ class TestNodeInfoRetriever(unittest.TestCase):
                                  '250',
                                  '350')
 
+    def __create_stats3(self):
+        return BrokerNodeImports(self.__add_timezone_to_date_string('20200101'),
+                                 self.__add_timezone_to_date_string('20200303'),
+                                 self.__add_timezone_to_date_string('20200303'),
+                                 '3000',
+                                 '600',
+                                 '300',
+                                 '400')
+
     def __create_stats2_dwh_restart(self):
         return BrokerNodeImports(self.__add_timezone_to_date_string('202001011200'),
                                  self.__add_timezone_to_date_string('20200303'),
@@ -190,6 +211,11 @@ class TestNodeInfoRetriever(unittest.TestCase):
     def __change_date_of_current_csv_to_past_days(self, days: int):
         df = self.__CSV_HANDLER.read_csv_as_df(self.__DEFAULT_CSV_PATH)
         df.loc[0, 'date'] = datetime.utcnow().replace(tzinfo=pytz.UTC) - timedelta(days=days)
+        self.__CSV_HANDLER.write_data_to_file(df, self.__DEFAULT_CSV_PATH)
+
+    def __change_date_of_last_csv_row_by_hours(self, hours: int):
+        df = self.__CSV_HANDLER.read_csv_as_df(self.__DEFAULT_CSV_PATH)
+        df.loc[df.index[-1], 'date'] = datetime.utcnow().replace(tzinfo=pytz.UTC) + timedelta(hours=hours)
         self.__CSV_HANDLER.write_data_to_file(df, self.__DEFAULT_CSV_PATH)
 
     @staticmethod
