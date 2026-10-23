@@ -189,6 +189,9 @@ class TimestampHandler(metaclass=SingletonMeta):
     def get_utc_ymd_from_date_string(self, date: str) -> str:
         return self.__to_utc(date).strftime('%Y-%m-%d')
 
+    def get_utc_ymdh_from_date_string(self, date: str) -> str:
+        return self.__to_utc(date).strftime('%Y-%m-%d %H')
+
     def get_utc_ymd_hms_from_date_string(self, date: str) -> str:
         return self.__to_utc(date).strftime('%Y-%m-%d %H:%M:%S')
 
