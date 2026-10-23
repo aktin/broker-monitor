@@ -53,6 +53,15 @@ class TestTemplatePageCSVInfoWriter(unittest.TestCase):
         self.__check_template_page_weekly_imports(page, '1000.00', '1000.00', '1000.00', '1000.00', '25.00')
         self.__check_template_page_daily_imports(page, '2000', '2000', '2000', '2000', '50.0')
 
+    def test_write_template_from_hourly_rows(self):
+        """
+        Weekly mean uses the last row of each day, not the last seven rows.
+        """
+        self.__create_csv_with_hourly_rows()
+        page = self.__CSV_INFO_WRITER.add_content_to_template_page(self.__TEMPLATE, self.__DEFAULT_NODE_ID)
+        self.__check_template_page_weekly_imports(page, '3000.00', '3000.00', '3000.00', '3000.00', '50.00')
+        self.__check_template_page_daily_imports(page, '4000', '4000', '4000', '4000', '50.0')
+
     def test_write_template_from_row_with_null_values(self):
         self.__create_csv_with_null_values()
         with self.assertRaises(TypeError):
@@ -89,6 +98,14 @@ class TestTemplatePageCSVInfoWriter(unittest.TestCase):
                            '0', '0', '0', '0', '0.0', '-', '-', '-', '-', '-']
         df.loc[len(df)] = ['2022-02-02 12:00:00+0100', '2022-10-10 11:00:00+0200', '2022-02-02 00:00:00+0100', '2022-02-02 10:00:00+0100', '2022-02-02 10:00:00+0100',
                            '2000', '2000', '2000', '2000', '50.0', '2000', '2000', '2000', '2000', '50.0']
+        self.__CSV_HANDLER.write_data_to_file(df, self.__DEFAULT_CSV_PATH)
+
+    def __create_csv_with_hourly_rows(self):
+        df = pd.DataFrame(columns=self.__CSV_HANDLER.get_csv_columns())
+        for date, value in [('2022-02-01 12:00:00+0100', '1000'), ('2022-02-01 13:00:00+0100', '2000'),
+                            ('2022-02-02 12:00:00+0100', '3000'), ('2022-02-02 13:00:00+0100', '4000')]:
+            df.loc[len(df)] = [date, '2022-10-10 11:00:00+0200', '2022-02-01 00:00:00+0100', '2022-02-02 10:00:00+0100', '2022-02-02 10:00:00+0100',
+                               value, value, value, value, '50.0', value, value, value, value, '50.0']
         self.__CSV_HANDLER.write_data_to_file(df, self.__DEFAULT_CSV_PATH)
 
     def __create_csv_with_null_values(self):

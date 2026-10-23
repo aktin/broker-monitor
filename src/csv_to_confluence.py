@@ -396,6 +396,12 @@ class TemplatePageCSVContentWriter(TemplatePageContentWriter, ABC):
         path_csv = os.path.join(working_dir, name_csv)
         return self._handler.read_csv_as_df(path_csv)
 
+    def _get_last_row_of_each_day(self) -> pd.DataFrame:
+        """
+        The info CSV holds one row per hour. Day-based evaluations use the last row of each day.
+        """
+        return self._df.groupby(self._df['date'].str[:10], sort=False).tail(1)
+
 
 # TODO bei last-import soll der tatsächliche last import stehen
 class TemplatePageCSVInfoWriter(TemplatePageCSVContentWriter):
@@ -438,7 +444,7 @@ class TemplatePageCSVInfoWriter(TemplatePageCSVContentWriter):
             'daily_failed': 'failed',
             'daily_error_rate': 'error_rate',
         }
-        last_week = self._df.tail(7)
+        last_week = self._get_last_row_of_each_day().tail(7)
         for field, template_class in fields.items():
             mean = self.__get_mean_of_series(last_week[field])
             self._page_template.find(class_=template_class).string.replace_with(mean)
@@ -548,10 +554,10 @@ class TemplatePageStatusChecker(TemplatePageCSVContentWriter):
     # TODO test missing
     def __append_last_year_rows_to_df_if_necessary(self):
         """
-        If the CSV has less than set rows, try to append the previous year's CSV
+        If the CSV covers less than the set number of days, try to append the previous year's CSV
         to this CSV.
         """
-        if len(self._df) < self.__default_days_of_consecutive_imports:
+        if len(self._get_last_row_of_each_day()) < self.__default_days_of_consecutive_imports:
             current_year = self._timestamp_handler.get_current_year()
             last_year = str(int(current_year) - 1)
             last_years_csv_name = self._handler.generate_node_csv_name(self._node_id, last_year)
@@ -582,13 +588,13 @@ class TemplatePageStatusChecker(TemplatePageCSVContentWriter):
     def __is_template_soup_still_testing(self) -> bool:
         """
         Checks if the node is still testing by verifying the consecutive days of imports.
-        If the set value for consecutive days is higher than the number of rows in the csv file,
+        If the set value for consecutive days is higher than the number of days in the csv file,
         the check is dropped and False is returned.
         """
         consecutive_imports = self._mapper.get_node_value_from_mapping_dict(self._node_id, 'CONSECUTIVE_IMPORT_DAYS')
         if not consecutive_imports or consecutive_imports is None:
             consecutive_imports = self.__default_days_of_consecutive_imports
-        series = self._df['daily_imported']
+        series = self._get_last_row_of_each_day()['daily_imported']
         if len(series) < consecutive_imports:
             return False
         series = series.str.replace('-', '0')
