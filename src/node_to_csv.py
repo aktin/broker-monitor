@@ -62,15 +62,15 @@ class NodeInfoRetriever(BrokerNodeRetriever):
     def download_broker_data_to_file(self, node_id: str):
         """
         Calls AKTIN Broker Endpoints to get import statistics of the connected node and writes the response to a CSV file.
-        - One row in the CSV file represents the status of one day.
-        - Computes differences to the last row in the CSV file (assuming it contains the import statistics of yesterday).
+        - One row in the CSV file represents the status of one hour.
+        - Computes daily differences to the last row of the previous day.
         - Import stats are resetted on DWH restart, so no daily differences are calculated then.
-        - Running the method multiple times will overwrite the row of the current day each time.
+        - Running the method multiple times within the same hour will overwrite the row of the current hour each time.
         - All date information from the broker server is converted into a local, human-readable format.
         - The variables 'last-reject' and 'last-write' from the broker server can be None if no data was imported or no error occurred.
         - Missing or not computable values are added as '-'.
         - The CSV file is rotated each year to limit its file size.
-        - If the CSV file is empty or newly created, the existence of the last year's CSV file is checked.
+        - If no row of the previous day exists in the CSV file, the last row of last year's CSV file is checked instead.
         """
         csv_name = self._handler.generate_node_csv_name(node_id)
         working_dir = self._init_node_directory_if_nonexisting(node_id)
@@ -78,16 +78,12 @@ class NodeInfoRetriever(BrokerNodeRetriever):
         node = self._broker_node_connection.get_broker_node(node_id)
         stats = self._broker_node_connection.get_broker_node_stats(node_id)
         df = self._handler.read_csv_as_df(csv_path)
-        df = self.__delete_todays_row_if_exists(df)
-        if df.empty:
+        df = self.__delete_current_hours_row_if_exists(df)
+        csv_row = self.__get_last_row_of_yesterday(df)
+        if csv_row is None:
             csv_row = self.__get_last_row_of_last_years_csv_if_exists(node_id, working_dir)
-        else:
-            csv_row = df.iloc[-1]
-        if csv_row is not None:
-            if self.__was_last_check_yesterday(csv_row) and self.__are_dwh_start_date_equal(csv_row, stats):
-                daily_map = self.__compute_daily_stats(csv_row, stats)
-            else:
-                daily_map = self.__generate_empty_daily_stats()
+        if csv_row is not None and self.__was_last_check_yesterday(csv_row) and self.__are_dwh_start_date_equal(csv_row, stats):
+            daily_map = self.__compute_daily_stats(csv_row, stats)
         else:
             daily_map = self.__generate_empty_daily_stats()
         stats_map = self.__generate_row_stats(node, stats)
@@ -96,19 +92,28 @@ class NodeInfoRetriever(BrokerNodeRetriever):
         df = pd.concat([df, stats_dict])
         self._handler.write_data_to_file(df, csv_path)
 
-    def __delete_todays_row_if_exists(self, csv: pd.DataFrame) -> pd.DataFrame:
+    def __delete_current_hours_row_if_exists(self, csv: pd.DataFrame) -> pd.DataFrame:
         """
-        Each row should represent one day, and no duplicates are allowed.
+        Each row should represent one hour, and no duplicates are allowed.
         """
         if not csv.empty:
             current_date = self._timestamp_handler.get_current_date()
-            current_ymd = self._timestamp_handler.get_utc_ymd_from_date_string(current_date)
-            last_ymd_of_csv = self._timestamp_handler.get_utc_ymd_from_date_string(csv.iloc[-1].date)
-            if last_ymd_of_csv == current_ymd:
+            current_ymdh = self._timestamp_handler.get_utc_ymdh_from_date_string(current_date)
+            last_ymdh_of_csv = self._timestamp_handler.get_utc_ymdh_from_date_string(csv.iloc[-1].date)
+            if last_ymdh_of_csv == current_ymdh:
                 csv = csv.head(-1)
-            if any(csv['date'] == current_ymd):
-                raise SystemExit('date of today was found in multiple rows!!')
+            if any(csv['date'] == current_ymdh):
+                raise SystemExit('date of current hour was found in multiple rows!!')
         return csv
+
+    def __get_last_row_of_yesterday(self, csv: pd.DataFrame) -> pd.Series:
+        """
+        Daily differences are computed against the last row of the previous day.
+        """
+        yesterdays_date = self._timestamp_handler.get_yesterdays_date()
+        yesterdays_ymd = self._timestamp_handler.get_utc_ymd_from_date_string(yesterdays_date)
+        rows = csv[csv['date'].str[:10] == yesterdays_ymd]
+        return None if rows.empty else rows.iloc[-1]
 
     def __get_last_row_of_last_years_csv_if_exists(self, node_id: str, working_dir: str) -> pd.DataFrame:
         """
